@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Turing Patterns</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            color: #0ff;
+            text-shadow: 0 0 5px #0ff;
+            cursor: crosshair;
+        }
+        canvas { display: block; }
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(0,255,255,0.3);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            user-select: none;
+            width: 220px;
+        }
+        .controls h2 {
+            margin-bottom: 12px;
+            font-size: 16px;
+            color: #ff0;
+            text-shadow: 0 0 10px #ff0;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        .control-group label {
+            display: block;
+            font-size: 10px;
+            color: #f0f;
+            margin-bottom: 4px;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: #0ff;
+        }
+        .value-display {
+            float: right;
+            color: #fff;
+            font-weight: bold;
+            font-size: 11px;
+        }
+        select {
+            width: 100%;
+            background: rgba(0,0,0,0.5);
+            color: #0ff;
+            border: 1px solid #0ff;
+            border-radius: 4px;
+            padding: 4px;
+            font-family: inherit;
+            margin-bottom: 10px;
+        }
+        .buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        button {
+            flex: 1;
+            padding: 8px;
+            background: transparent;
+            border: 1px solid #0ff;
+            color: #0ff;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: rgba(0,255,255,0.1);
+            box-shadow: 0 0 10px rgba(0,255,255,0.3);
+        }
+        .stats {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #0f0;
+            text-shadow: 0 0 8px #0f0;
+            font-size: 12px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(0,255,0,0.3);
+        }
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #888;
+            font-size: 12px;
+            text-align: center;
+            max-width: 500px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h2>🎨 NEON TURING PATTERNS</h2>
+
+        <div class="control-group">
+            <label>Preset</label>
+            <select id="preset">
+                <option value="spots">Spots</option>
+                <option value="stripes">Stripes</option>
+                <option value="maze">Maze</option>
+                <option value="worms">Worms</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Feed (f) <span class="value-display" id="feedVal">0.055</span></label>
+            <input type="range" id="feed" min="0.01" max="0.1" step="0.001" value="0.055">
+        </div>
+
+        <div class="control-group">
+            <label>Kill (k) <span class="value-display" id="killVal">0.062</span></label>
+            <input type="range" id="kill" min="0.03" max="0.07" step="0.001" value="0.062">
+        </div>
+
+        <div class="control-group">
+            <label>ΔA (diff A) <span class="value-display" id="diffaVal">1.0</span></label>
+            <input type="range" id="diffa" min="0.1" max="2" step="0.05" value="1.0">
+        </div>
+
+        <div class="control-group">
+            <label>ΔI (diff I) <span class="value-display" id="diffbVal">0.5</span></label>
+            <input type="range" id="diffb" min="0.1" max="2" step="0.05" value="0.5">
+        </div>
+
+        <div class="control-group">
+            <label>Time Step (dt) <span class="value-display" id="dtVal">1.0</span></label>
+            <input type="range" id="dt" min="0.5" max="3" step="0.1" value="1.0">
+        </div>
+
+        <div class="control-group">
+            <label>Color Speed <span class="value-display" id="colorSpeedVal">0.5</span></label>
+            <input type="range" id="colorSpeed" min="0" max="2" step="0.1" value="0.5">
+        </div>
+
+        <div class="buttons">
+            <button id="pauseBtn">Pause</button>
+            <button id="randomBtn">Randomize</button>
+        </div>
+    </div>
+
+    <div class="stats">
+        <div>FPS: <span id="fps">60</span></div>
+        <div>Min(A): <span id="minA">0.00</span></div>
+        <div>Max(A): <span id="maxA">0.00</span></div>
+    </div>
+
+    <div class="instructions">
+        Reaction-diffusion (Gray-Scott) equations: activator A and inhibitor B diffuse and react. Presets yield spots, stripes, mazes, worms. Click to inject activator. Adjust feed/kill/diffusion to explore pattern space.
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Controls
+        const presetSelect = document.getElementById('preset');
+        const feedSlider = document.getElementById('feed');
+        const killSlider = document.getElementById('kill');
+        const diffaSlider = document.getElementById('diffa');
+        const diffbSlider = document.getElementById('diffb');
+        const dtSlider = document.getElementById('dt');
+        const colorSpeedSlider = document.getElementById('colorSpeed');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const randomBtn = document.getElementById('randomBtn');
+
+        let width, height;
+        let running = true;
+        let lastTime = 0;
+        let frameCount = 0;
+        let lastFpsTime = 0;
+        let hueCycle = 0;
+
+        // Grid setup
+        let scale = 4; // render scale
+        let gW, gH;
+        let A, B; // chemical concentrations (Float32Array)
+        let nextA, nextB; // double buffer
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initGrid();
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        function initGrid() {
+            gW = Math.ceil(width / scale);
+            gH = Math.ceil(height / scale);
+            const size = gW * gH;
+            A = new Float32Array(size);
+            B = new Float32Array(size);
+            nextA = new Float32Array(size);
+            nextB = new Float32Array(size);
+            // Initialize with small random B everywhere, and a central seed of A
+            for (let i = 0; i < size; i++) {
+                A[i] = 1.0;
+                B[i] = 0.0;
+            }
+            // Seed: a square in the middle with high B
+            const cx = Math.floor(gW/2);
+            const cy = Math.floor(gH/2);
+            const seedRadius = Math.min(gW,gH)*0.15;
+            for (let y = 0; y < gH; y++) {
+                for (let x = 0; x < gW; x++) {
+                    const dx = x - cx;
+                    const dy = y - cy;
+                    if (dx*dx + dy*dy < seedRadius*seedRadius) {
+                        const idx = y*gW + x;
+                        A[idx] = 0.5;
+                        B[idx] = 0.25;
+                    }
+                }
+            }
+        }
+
+        function idx(x, y) {
+            // Wrap toroidally
+            const wx = (x % gW + gW) % gW;
+            const wy = (y % gH + gH) % gH;
+            return wy * gW + wx;
+        }
+
+        function update() {
+            const feed = parseFloat(feedSlider.value);
+            const kill = parseFloat(killSlider.value);
+            const Da = parseFloat(diffaSlider.value);
+            const Db = parseFloat(diffbSlider.value);
+            const dt = parseFloat(dtSlider.value);
+
+            // Laplacian convolution (3x3) on torus
+            for (let y = 0; y < gH; y++) {
+                for (let x = 0; x < gW; x++) {
+                    const i = idx(x, y);
+                    const a = A[i];
+                    const b = B[i];
+
+                    // Laplacian: sum of 8 neighbors minus 8*center
+                    const lapA =
+                        A[idx(x-1, y-1)] + A[idx(x,   y-1)] + A[idx(x+1, y-1)] +
+                        A[idx(x-1, y  )]                + A[idx(x+1, y  )] +
+                        A[idx(x-1, y+1)] + A[idx(x,   y+1)] + A[idx(x+1, y+1)] -
+                        8 * a;
+                    const lapB =
+                        B[idx(x-1, y-1)] + B[idx(x,   y-1)] + B[idx(x+1, y-1)] +
+                        B[idx(x-1, y  )]                + B[idx(x+1, y  )] +
+                        B[idx(x-1, y+1)] + B[idx(x,   y+1)] + B[idx(x+1, y+1)] -
+                        8 * b;
+
+                    // Gray-Scott equations
+                    // A' = Da*lapA - a*b^2 + f*(1-A)
+                    // B' = Db*lapB + a*b^2 - (k+f)*B
+                    const reaction = a * b * b;
+                    const newA = a + (Da * lapA - reaction + feed * (1 - a)) * dt;
+                    const newB = b + (Db * lapB + reaction - (kill + feed) * b) * dt;
+
+                    nextA[i] = newA;
+                    nextB[i] = newB;
+                }
+            }
+
+            // swap buffers
+            let tmp = A; A = nextA; nextA = tmp;
+            tmp = B; B = nextB; nextB = tmp;
+        }
+
+        function draw() {
+            // Draw scaled-up pixel grid using putImageData (fast)
+            const img = ctx.createImageData(gW, gH);
+            const data = img.data;
+            let minA = 1, maxA = 0;
+            for (let i = 0; i < gW*gH; i++) {
+                const a = A[i];
+                minA = Math.min(minA, a);
+                maxA = Math.max(maxA, a);
+            }
+            // For coloring, map A to intensity, combine with hue cycling
+            for (let i = 0; i < gW*gH; i++) {
+                const a = A[i];
+                const b = B[i];
+                // Threshold to make areas with less B black
+                if (b > 0.2) {
+                    const intensity = Math.floor(a * 255);
+                    const hue = (hueCycle + a*120) % 360;
+                    const [r,g,b] = hslToRgb(hue/360, 0.8, intensity/255*0.6);
+                    const idx = i * 4;
+                    data[idx] = r;
+                    data[idx+1] = g;
+                    data[idx+2] = b;
+                    data[idx+3] = 255;
+                } else {
+                    const idx = i * 4;
+                    data[idx+3] = 0; // transparent -> black background
+                }
+            }
+            // Create temp canvas to scale up
+            const tmp = document.createElement('canvas');
+            tmp.width = gW; tmp.height = gH;
+            tmp.getContext('2d').putImageData(img, 0, 0);
+            ctx.clearRect(0,0,width,height);
+            ctx.drawImage(tmp, 0, 0, width, height);
+        }
+
+        function animate(timestamp) {
+            const delta = timestamp - lastTime || 16;
+            lastTime = timestamp;
+
+            frameCount++;
+            if (timestamp - lastFpsTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastFpsTime = timestamp;
+            }
+
+            if (running) {
+                update();
+                draw();
+                hueCycle = (hueCycle + parseFloat(colorSpeedSlider.value) * delta * 0.01) % 360;
+
+                // Update stats (sample some A values)
+                let minA = 1, maxA = 0;
+                for (let i = 0; i < A.length; i++) {
+                    const v = A[i];
+                    if (v < minA) minA = v;
+                    if (v > maxA) maxA = v;
+                }
+                document.getElementById('minA').textContent = minA.toFixed(3);
+                document.getElementById('maxA').textContent = maxA.toFixed(3);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        canvas.addEventListener('click', (e) => {
+            // Inject activator at click location (increase A, decrease B slightly)
+            const gx = Math.floor(e.clientX / scale);
+            const gy = Math.floor(e.clientY / scale);
+            for (let dy = -2; dy <= 2; dy++) {
+                for (let dx = -2; dx <= 2; dx++) {
+                    const x = (gx + dx + gW) % gW;
+                    const y = (gy + dy + gH) % gH;
+                    const i = idx(x, y);
+                    A[i] = 1.0;
+                    B[i] = 0.0;
+                }
+            }
+        });
+
+        function updateDisplays() {
+            document.getElementById('feedVal').textContent = feedSlider.value;
+            document.getElementById('killVal').textContent = killSlider.value;
+            document.getElementById('diffaVal').textContent = diffaSlider.value;
+            document.getElementById('diffbVal').textContent = diffbSlider.value;
+            document.getElementById('dtVal').textContent = dtSlider.value;
+            document.getElementById('colorSpeedVal').textContent = colorSpeedSlider.value;
+        }
+
+        const sliders = [feedSlider, killSlider, diffaSlider, diffbSlider, dtSlider, colorSpeedSlider];
+        sliders.forEach(s => s.addEventListener('input', updateDisplays));
+
+        pauseBtn.addEventListener('click', () => {
+            running = !running;
+            pauseBtn.textContent = running ? "Pause" : "Resume";
+            if (running) animate(0);
+        });
+
+        randomBtn.addEventListener('click', () => {
+            // Choose random preset then randomize around that
+            const presets = ["spots", "stripes", "maze", "worms"];
+            const p = presets[Math.floor(Math.random()*presets.length)];
+            presetSelect.value = p;
+            applyPreset(p);
+            updateDisplays();
+        });
+
+        presetSelect.addEventListener('change', () => {
+            applyPreset(presetSelect.value);
+            updateDisplays();
+        });
+
+        const presets = {
+            spots: { feed: 0.055, kill: 0.062, Da: 1.0, Db: 0.5 },
+            stripes: { feed: 0.035, kill: 0.060, Da: 1.0, Db: 0.5 },
+            maze: { feed: 0.029, kill: 0.057, Da: 1.0, Db: 0.5 },
+            worms: { feed: 0.078, kill: 0.061, Da: 1.0, Db: 0.3 }
+        };
+
+        function applyPreset(name) {
+            const p = presets[name];
+            feedSlider.value = p.feed;
+            killSlider.value = p.kill;
+            diffaSlider.value = p.Da;
+            diffbSlider.value = p.Db;
+        }
+
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) { r = g = b = l; }
+            else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return [Math.round(r*255), Math.round(g*255), Math.round(b*255)];
+        }
+
+        updateDisplays();
+        animate(0);
+    </script>
+</body>
+</html>
